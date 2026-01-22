@@ -8,14 +8,20 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useGLTF, useAnimations } from '@react-three/drei'; // Imported for future GLB loading
 import { useStore } from '../../store';
 import { LANE_WIDTH, GameStatus } from '../../types';
 import { audio } from '../System/Audio';
 
 const FIRE_RATE = 0.15; // Seconds between shots
 
+// --- ASSET CONFIGURATION ---
+// Set this to true if you have placed a 'player.glb' in 'public/assets/models/'
+const USE_LOCAL_MODEL = false; 
+const LOCAL_MODEL_PATH = '/assets/models/player.glb';
+
 // --- Procedural Mech Character ---
-// This replaces the external model to ensure 100% uptime and no CORS issues.
+// This acts as a fallback or default when no external asset is provided.
 const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
     const group = useRef<THREE.Group>(null);
     const leftLeg = useRef<THREE.Group>(null);
@@ -148,6 +154,32 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
             </group>
         </group>
     );
+};
+
+// --- GLB Asset Loader (Optional) ---
+const LoadedModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
+    // This will error if the file doesn't exist, which is why USE_LOCAL_MODEL is false by default
+    // When you have a file, upload it to public/assets/models/player.glb
+    const { scene, animations } = useGLTF(LOCAL_MODEL_PATH) as any;
+    const { actions } = useAnimations(animations, scene);
+
+    useEffect(() => {
+        if (actions) {
+            const actionName = Object.keys(actions)[0];
+            const action = actions[actionName];
+            if(action) action.reset().fadeIn(0.5).play();
+        }
+    }, [actions]);
+
+    useEffect(() => {
+        if (actions) {
+            Object.values(actions).forEach((action: any) => {
+                if (action) action.timeScale = isSlowMotion ? 0.5 : 1.2;
+            });
+        }
+    }, [isSlowMotion, actions]);
+
+    return <primitive object={scene} scale={[1, 1, 1]} />;
 };
 
 
@@ -390,8 +422,14 @@ export const Player: React.FC = () => {
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
       <group ref={bodyRef}>
-          {/* Replaced GLTF Model with Procedural Mech */}
-          <MechModel isSlowMotion={isSlowMotion} />
+          {/* Use Local Model if flag is set, otherwise use Procedural Mech */}
+          {USE_LOCAL_MODEL ? (
+               <React.Suspense fallback={<MechModel isSlowMotion={isSlowMotion} />}>
+                   <LoadedModel isSlowMotion={isSlowMotion} />
+               </React.Suspense>
+          ) : (
+               <MechModel isSlowMotion={isSlowMotion} />
+          )}
       </group>
       
       {/* Simple Blob Shadow as fallback/landing indicator */}
