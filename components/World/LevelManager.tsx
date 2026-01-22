@@ -5,7 +5,7 @@
 */
 
 
-import React, { useRef, useEffect, useState, useMemo, Suspense, ReactNode } from 'react';
+import React, { Component, useRef, useEffect, useState, useMemo, Suspense, ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Text3D, Center, useGLTF, Clone } from '@react-three/drei';
@@ -27,7 +27,7 @@ interface ErrorBoundaryProps {
   children?: ReactNode;
 }
 
-class ModelErrorBoundary extends React.Component<ErrorBoundaryProps, { hasError: boolean }> {
+class ModelErrorBoundary extends Component<ErrorBoundaryProps, { hasError: boolean }> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };

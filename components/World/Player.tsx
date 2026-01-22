@@ -5,7 +5,7 @@
 */
 
 
-import React, { useRef, useEffect, useState, Suspense, ReactNode } from 'react';
+import React, { Component, useRef, useEffect, useState, Suspense, ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useGLTF, useAnimations } from '@react-three/drei';
@@ -18,7 +18,8 @@ const FIRE_RATE = 0.15; // Seconds between shots
 // --- CONFIGURATION ---
 // Set to true to attempt loading the external GLB model.
 // Ensure the file exists at the path or URL before enabling to avoid 404 errors.
-const ENABLE_CUSTOM_MODEL = true; 
+// Disabled by default to prevent crashes if assets are missing.
+const ENABLE_CUSTOM_MODEL = false; 
 
 // --- PATH CONSTANTS ---
 const REMOTE_PATH = 'https://raw.githubusercontent.com/Lexus74/Gemini-Hunter/main/public/assets/models/Hunter.glb';
@@ -35,7 +36,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-class ModelErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ModelErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
