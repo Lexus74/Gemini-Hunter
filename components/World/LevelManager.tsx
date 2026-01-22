@@ -5,16 +5,38 @@
 */
 
 
-import React, { useRef, useEffect, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useState, useMemo, Suspense, ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Text3D, Center } from '@react-three/drei';
+import { Text3D, Center, useGLTF, Clone } from '@react-three/drei';
 import { v4 as uuidv4 } from 'uuid';
 import { useStore } from '../../store';
 import { GameObject, ObjectType, EnemyVariant, LANE_WIDTH, SPAWN_DISTANCE, REMOVE_DISTANCE, GameStatus, GEMINI_COLORS } from '../../types';
 import { audio } from '../System/Audio';
 
-// Geometry Constants
+// --- Assets ---
+const ALIEN_PATHS = {
+    [EnemyVariant.GREEN_ALIEN]: '/assets/models/Alien1.glb',
+    [EnemyVariant.SAUCER]: '/assets/models/Alien2.glb',
+    [EnemyVariant.ARMORED]: '/assets/models/Alien3.glb',
+};
+
+// --- Error Boundary for Models ---
+interface ErrorBoundaryProps {
+  fallback: ReactNode;
+  children?: ReactNode;
+}
+
+class ModelErrorBoundary extends React.Component<ErrorBoundaryProps, { hasError: boolean }> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() { return this.state.hasError ? this.props.fallback : this.props.children; }
+}
+
+// --- Geometry Constants (Fallbacks) ---
 
 // Green Alien (Level 1)
 const ALIEN_GREEN_HEAD = new THREE.SphereGeometry(0.5, 16, 16);
@@ -32,7 +54,7 @@ const ARMORED_VISOR = new THREE.PlaneGeometry(0.3, 0.1);
 
 const GEM_GEOMETRY = new THREE.IcosahedronGeometry(0.15, 0);
 
-// Alien (The Shooter Flyer) Geometries - Keeping as distinct threat type
+// Alien (The Shooter Flyer) Geometries
 const ALIEN_BODY_GEO = new THREE.CylinderGeometry(0.6, 0.3, 0.3, 8);
 const ALIEN_DOME_GEO = new THREE.SphereGeometry(0.4, 16, 16, 0, Math.PI * 2, 0, Math.PI/2);
 const ALIEN_EYE_GEO = new THREE.SphereGeometry(0.1);
@@ -45,19 +67,9 @@ const MISSILE_RING_GEO = new THREE.TorusGeometry(0.15, 0.02, 16, 32);
 const BULLET_GEO = new THREE.CapsuleGeometry(0.1, 0.4, 4, 8);
 const ENEMY_BULLET_GEO = new THREE.SphereGeometry(0.25, 8, 8);
 
-// Shadow Geometries
-const SHADOW_LETTER_GEO = new THREE.PlaneGeometry(2, 0.6);
-const SHADOW_GEM_GEO = new THREE.CircleGeometry(0.6, 32);
-const SHADOW_ALIEN_GEO = new THREE.CircleGeometry(0.8, 32);
-const SHADOW_MISSILE_GEO = new THREE.PlaneGeometry(0.15, 3);
-const SHADOW_BARREL_GEO = new THREE.PlaneGeometry(1.4, 1.4); 
-const SHADOW_DEFAULT_GEO = new THREE.CircleGeometry(0.8, 6);
-
 // Shop Geometries
 const SHOP_FRAME_GEO = new THREE.BoxGeometry(1, 7, 1); 
-const SHOP_BACK_GEO = new THREE.BoxGeometry(1, 5, 1.2); 
 const SHOP_OUTLINE_GEO = new THREE.BoxGeometry(1, 7.2, 0.8); 
-const SHOP_FLOOR_GEO = new THREE.PlaneGeometry(1, 4); 
 
 const PARTICLE_COUNT = 600;
 const BASE_LETTER_INTERVAL = 150; 
@@ -171,6 +183,14 @@ const getRandomLane = (laneCount: number) => {
     return Math.floor(Math.random() * (max * 2 + 1)) - max;
 };
 
+// --- Loaded Enemy Component ---
+const LoadedEnemy: React.FC<{ url: string; scale: number }> = ({ url, scale }) => {
+    const { scene } = useGLTF(url);
+    // Clone scene for multiple instances
+    // Rotation Math.PI assumes models face +Z (forward), so we rotate 180 to face camera
+    return <Clone object={scene} scale={[scale * 1.5, scale * 1.5, scale * 1.5]} rotation={[0, Math.PI, 0]} />;
+};
+
 const GameEntity: React.FC<{ data: GameObject }> = ({ data }) => {
     const meshRef = useRef<THREE.Group>(null);
     const { type, position, color, value, variant, scale = 1.0 } = data;
@@ -184,6 +204,9 @@ const GameEntity: React.FC<{ data: GameObject }> = ({ data }) => {
                 meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 3) * 0.1;
             } else if (type === ObjectType.MISSILE) {
                  meshRef.current.rotation.z += delta * 10;
+            } else if (type === ObjectType.BARREL) {
+                 // Slight bob for enemies
+                 meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 5) * 0.1;
             }
         }
     });
@@ -268,57 +291,43 @@ const GameEntity: React.FC<{ data: GameObject }> = ({ data }) => {
                      </group>
                  );
              case ObjectType.BARREL:
-                 if (variant === EnemyVariant.SAUCER) {
-                      return (
-                          <group scale={[scale, scale, scale]}>
-                              <mesh geometry={SAUCER_BODY}>
-                                  <meshStandardMaterial color="#888" metalness={0.8} />
-                              </mesh>
-                              <mesh geometry={SAUCER_DOME} position={[0, 0.15, 0]}>
-                                  <meshBasicMaterial color="#00ff00" transparent opacity={0.8} />
-                              </mesh>
-                              <mesh rotation={[Math.PI/2, 0, 0]}>
-                                  <torusGeometry args={[0.4, 0.05, 16, 32]} />
-                                  <meshBasicMaterial color="#555" />
-                              </mesh>
-                          </group>
-                      );
+                 // --- ENEMY MODEL LOADING ---
+                 if (variant) {
+                     const path = ALIEN_PATHS[variant];
+                     const proceduralFallback = (
+                         <group scale={[scale, scale, scale]}>
+                            {variant === EnemyVariant.SAUCER ? (
+                                <>
+                                    <mesh geometry={SAUCER_BODY}><meshStandardMaterial color="#888" metalness={0.8} /></mesh>
+                                    <mesh geometry={SAUCER_DOME} position={[0, 0.15, 0]}><meshBasicMaterial color="#00ff00" transparent opacity={0.8} /></mesh>
+                                    <mesh rotation={[Math.PI/2, 0, 0]}><torusGeometry args={[0.4, 0.05, 16, 32]} /><meshBasicMaterial color="#555" /></mesh>
+                                </>
+                            ) : variant === EnemyVariant.ARMORED ? (
+                                <>
+                                    <mesh geometry={ARMORED_BODY} position={[0, 0.3, 0]}><meshStandardMaterial color="#333" roughness={0.7} /></mesh>
+                                    <mesh geometry={ARMORED_HEAD} position={[0, 0.75, 0]}><meshStandardMaterial color="#222" /></mesh>
+                                    <mesh geometry={ARMORED_VISOR} position={[0, 0.75, 0.23]}><meshBasicMaterial color="#ff0000" /></mesh>
+                                    <mesh geometry={ARMORED_SHOULDER} position={[-0.35, 0.6, 0]}><meshStandardMaterial color="#111" /></mesh>
+                                    <mesh geometry={ARMORED_SHOULDER} position={[0.35, 0.6, 0]}><meshStandardMaterial color="#111" /></mesh>
+                                </>
+                            ) : (
+                                <>
+                                    <mesh geometry={ALIEN_GREEN_HEAD}><meshStandardMaterial color="green" roughness={0.4} /></mesh>
+                                    <mesh geometry={ALIEN_GREEN_EYE} position={[0, 0.1, 0.4]}><meshBasicMaterial color="black" /></mesh>
+                                </>
+                            )}
+                         </group>
+                     );
+
+                     return (
+                         <ModelErrorBoundary fallback={proceduralFallback}>
+                             <Suspense fallback={proceduralFallback}>
+                                 <LoadedEnemy url={path} scale={scale} />
+                             </Suspense>
+                         </ModelErrorBoundary>
+                     );
                  }
-                 if (variant === EnemyVariant.ARMORED) {
-                      return (
-                          <group scale={[scale, scale, scale]}>
-                              <mesh geometry={ARMORED_BODY} position={[0, 0.3, 0]}>
-                                  <meshStandardMaterial color="#333" roughness={0.7} />
-                              </mesh>
-                              <mesh geometry={ARMORED_HEAD} position={[0, 0.75, 0]}>
-                                  <meshStandardMaterial color="#222" />
-                              </mesh>
-                              <mesh geometry={ARMORED_VISOR} position={[0, 0.75, 0.23]}>
-                                  <meshBasicMaterial color="#ff0000" />
-                              </mesh>
-                              <mesh geometry={ARMORED_SHOULDER} position={[-0.35, 0.6, 0]}>
-                                  <meshStandardMaterial color="#111" />
-                              </mesh>
-                              <mesh geometry={ARMORED_SHOULDER} position={[0.35, 0.6, 0]}>
-                                  <meshStandardMaterial color="#111" />
-                              </mesh>
-                          </group>
-                      );
-                 }
-                 return (
-                     <group scale={[scale, scale, scale]}>
-                         <mesh geometry={ALIEN_GREEN_HEAD}>
-                             <meshStandardMaterial color="green" roughness={0.4} />
-                         </mesh>
-                         <mesh geometry={ALIEN_GREEN_EYE} position={[0, 0.1, 0.4]}>
-                             <meshBasicMaterial color="black" />
-                         </mesh>
-                         <mesh position={[0, 0.1, 0.52]} scale={[0.3, 0.3, 0.3]}>
-                              <sphereGeometry args={[0.1]} />
-                              <meshBasicMaterial color="white" />
-                         </mesh>
-                     </group>
-                 );
+                 return null;
              default:
                  return null;
          }
