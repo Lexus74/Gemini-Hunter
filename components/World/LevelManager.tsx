@@ -30,7 +30,7 @@ const ARMORED_HEAD = new THREE.BoxGeometry(0.4, 0.35, 0.45);
 const ARMORED_SHOULDER = new THREE.SphereGeometry(0.25, 8, 8);
 const ARMORED_VISOR = new THREE.PlaneGeometry(0.3, 0.1);
 
-const GEM_GEOMETRY = new THREE.IcosahedronGeometry(0.3, 0);
+const GEM_GEOMETRY = new THREE.IcosahedronGeometry(0.15, 0);
 
 // Alien (The Shooter Flyer) Geometries - Keeping as distinct threat type
 const ALIEN_BODY_GEO = new THREE.CylinderGeometry(0.6, 0.3, 0.3, 8);
@@ -169,6 +169,166 @@ const ParticleSystem: React.FC = () => {
 const getRandomLane = (laneCount: number) => {
     const max = Math.floor(laneCount / 2);
     return Math.floor(Math.random() * (max * 2 + 1)) - max;
+};
+
+const GameEntity: React.FC<{ data: GameObject }> = ({ data }) => {
+    const meshRef = useRef<THREE.Group>(null);
+    const { type, position, color, value, variant, scale = 1.0 } = data;
+    
+    useFrame((state, delta) => {
+        if (meshRef.current) {
+            meshRef.current.position.set(position[0], position[1], position[2]);
+            
+            if (type === ObjectType.GEM || type === ObjectType.LETTER) {
+                meshRef.current.rotation.y += delta * 2;
+                meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 3) * 0.1;
+            } else if (type === ObjectType.MISSILE) {
+                 meshRef.current.rotation.z += delta * 10;
+            }
+        }
+    });
+
+    const innerContent = useMemo(() => {
+         switch(type) {
+             case ObjectType.LETTER:
+                 return (
+                     <group>
+                        <Center top>
+                            <Text3D font={FONT_URL} size={0.6} height={0.2} curveSegments={12}>
+                                {value}
+                                <meshStandardMaterial color={color} emissive={color} emissiveIntensity={2} />
+                            </Text3D>
+                        </Center>
+                        <mesh rotation={[Math.PI/2,0,0]}>
+                            <torusGeometry args={[0.5, 0.05, 16, 32]} />
+                            <meshBasicMaterial color={color} />
+                        </mesh>
+                     </group>
+                 );
+             case ObjectType.GEM:
+                 return (
+                     <mesh geometry={GEM_GEOMETRY}>
+                         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} roughness={0.1} metalness={0.8} />
+                     </mesh>
+                 );
+             case ObjectType.BULLET:
+                 return (
+                    <mesh geometry={BULLET_GEO} rotation={[Math.PI/2, 0, 0]}>
+                        <meshBasicMaterial color="#00ffff" />
+                    </mesh>
+                 );
+             case ObjectType.ENEMY_BULLET:
+                 return (
+                    <mesh geometry={ENEMY_BULLET_GEO}>
+                        <meshBasicMaterial color="#ff0000" />
+                    </mesh>
+                 );
+             case ObjectType.MISSILE:
+                 return (
+                    <group rotation={[Math.PI/2, 0, 0]}>
+                        <mesh geometry={MISSILE_CORE_GEO}>
+                             <meshStandardMaterial color="white" />
+                        </mesh>
+                        <mesh geometry={MISSILE_RING_GEO} position={[0, -0.5, 0]}>
+                             <meshBasicMaterial color="red" />
+                        </mesh>
+                        <mesh position={[0, -1.6, 0]}>
+                             <coneGeometry args={[0.2, 0.8, 8]} />
+                             <meshBasicMaterial color="orange" />
+                        </mesh>
+                    </group>
+                 );
+             case ObjectType.SHOP_PORTAL:
+                 return (
+                    <group>
+                        <mesh geometry={SHOP_OUTLINE_GEO} position={[0, 3.6, 0]}>
+                            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={1} />
+                        </mesh>
+                        <mesh geometry={SHOP_FRAME_GEO} position={[0, 3.5, 0]}>
+                             <meshStandardMaterial color="#111" />
+                        </mesh>
+                        <Text3D font={FONT_URL} size={0.5} position={[-0.8, 6.5, 0.6]}>
+                            SHOP
+                            <meshBasicMaterial color="#ffffff" />
+                        </Text3D>
+                    </group>
+                 );
+             case ObjectType.ALIEN:
+                 return (
+                     <group scale={[scale, scale, scale]}>
+                         <mesh geometry={ALIEN_BODY_GEO}>
+                             <meshStandardMaterial color="#444" />
+                         </mesh>
+                         <mesh geometry={ALIEN_DOME_GEO} position={[0, 0.15, 0]}>
+                             <meshStandardMaterial color="#222" roughness={0.2} />
+                         </mesh>
+                         <mesh geometry={ALIEN_EYE_GEO} position={[0, 0.1, 0.25]}>
+                             <meshBasicMaterial color="#ff0000" />
+                         </mesh>
+                     </group>
+                 );
+             case ObjectType.BARREL:
+                 if (variant === EnemyVariant.SAUCER) {
+                      return (
+                          <group scale={[scale, scale, scale]}>
+                              <mesh geometry={SAUCER_BODY}>
+                                  <meshStandardMaterial color="#888" metalness={0.8} />
+                              </mesh>
+                              <mesh geometry={SAUCER_DOME} position={[0, 0.15, 0]}>
+                                  <meshBasicMaterial color="#00ff00" transparent opacity={0.8} />
+                              </mesh>
+                              <mesh rotation={[Math.PI/2, 0, 0]}>
+                                  <torusGeometry args={[0.4, 0.05, 16, 32]} />
+                                  <meshBasicMaterial color="#555" />
+                              </mesh>
+                          </group>
+                      );
+                 }
+                 if (variant === EnemyVariant.ARMORED) {
+                      return (
+                          <group scale={[scale, scale, scale]}>
+                              <mesh geometry={ARMORED_BODY} position={[0, 0.3, 0]}>
+                                  <meshStandardMaterial color="#333" roughness={0.7} />
+                              </mesh>
+                              <mesh geometry={ARMORED_HEAD} position={[0, 0.75, 0]}>
+                                  <meshStandardMaterial color="#222" />
+                              </mesh>
+                              <mesh geometry={ARMORED_VISOR} position={[0, 0.75, 0.23]}>
+                                  <meshBasicMaterial color="#ff0000" />
+                              </mesh>
+                              <mesh geometry={ARMORED_SHOULDER} position={[-0.35, 0.6, 0]}>
+                                  <meshStandardMaterial color="#111" />
+                              </mesh>
+                              <mesh geometry={ARMORED_SHOULDER} position={[0.35, 0.6, 0]}>
+                                  <meshStandardMaterial color="#111" />
+                              </mesh>
+                          </group>
+                      );
+                 }
+                 return (
+                     <group scale={[scale, scale, scale]}>
+                         <mesh geometry={ALIEN_GREEN_HEAD}>
+                             <meshStandardMaterial color="green" roughness={0.4} />
+                         </mesh>
+                         <mesh geometry={ALIEN_GREEN_EYE} position={[0, 0.1, 0.4]}>
+                             <meshBasicMaterial color="black" />
+                         </mesh>
+                         <mesh position={[0, 0.1, 0.52]} scale={[0.3, 0.3, 0.3]}>
+                              <sphereGeometry args={[0.1]} />
+                              <meshBasicMaterial color="white" />
+                         </mesh>
+                     </group>
+                 );
+             default:
+                 return null;
+         }
+    }, [type, color, value, variant, scale]);
+
+    return (
+        <group ref={meshRef}>
+            {innerContent}
+        </group>
+    );
 };
 
 export const LevelManager: React.FC = () => {
@@ -510,7 +670,8 @@ export const LevelManager: React.FC = () => {
 
                             if (obj.type === ObjectType.BARREL) {
                                 if (obj.variant === EnemyVariant.SAUCER) {
-                                     objBottom = 0.5 * scale; objTop = 1.5 * scale;
+                                     // Grounded saucer check
+                                     objBottom = 0.0; objTop = 1.0 * scale;
                                 } else if (obj.variant === EnemyVariant.ARMORED) {
                                      objBottom = 0.0; objTop = 1.5 * scale;
                                 } else {
@@ -590,9 +751,9 @@ export const LevelManager: React.FC = () => {
     // This allows the track to be populated backwards from furthestZ up to the horizon.
     // If furthestZ is -60, next spawn is -63 (approx), then -66, etc.
     if (furthestZ > -SPAWN_DISTANCE) {
-         // HIGH DENSITY SPAWNING --> REDUCED DENSITY
-         // Was 3 + speed * 0.1. Doubling base gap to 6 + speed * 0.2 to cut density in half.
-         const minGap = 6 + (speed * 0.2); 
+         // EXTREME DENSITY REDUCTION
+         // Was 30 + speed * 0.2. Doubled again to 60 + speed * 0.2
+         const minGap = 60 + (speed * 0.2); 
          // Ensure we spawn behind the furthest object, but not beyond the spawn horizon
          const spawnZ = Math.max(furthestZ - minGap, -SPAWN_DISTANCE);
          
@@ -610,7 +771,7 @@ export const LevelManager: React.FC = () => {
                      keptObjects.push({
                         id: uuidv4(),
                         type: ObjectType.LETTER,
-                        position: [lane * LANE_WIDTH, 1.0, spawnZ], 
+                        position: [lane * LANE_WIDTH, 0.5, spawnZ], // Dropped to 0.5 (sitting on path)
                         active: true,
                         color: GEMINI_COLORS[chosenIndex],
                         value: target[chosenIndex],
@@ -622,7 +783,7 @@ export const LevelManager: React.FC = () => {
                     keptObjects.push({
                         id: uuidv4(),
                         type: ObjectType.GEM,
-                        position: [lane * LANE_WIDTH, 1.2, spawnZ],
+                        position: [lane * LANE_WIDTH, 0.2, spawnZ], // Dropped to 0.2 (sitting on path)
                         active: true,
                         color: '#00ffff',
                         points: 50
@@ -632,14 +793,14 @@ export const LevelManager: React.FC = () => {
 
              } else if (Math.random() > 0.1) { 
                 // Decision: Obstacle vs Gem
-                // Increased threshold from 0.20 to 0.40.
-                // Now: 60% chance for Obstacle, 40% chance for Gem (previously 80/20)
-                const isObstacle = Math.random() > 0.40;
+                // Reduced density again. 
+                // Was 85% chance for Gem (15% obstacle). Now 92% chance for Gem (8% obstacle).
+                const isObstacle = Math.random() > 0.92;
 
                 if (isObstacle) {
                     const spawnAlien = level >= 2 && Math.random() < 0.2; 
-                    // HEALTH SCALING: Health = Level * 2 (Doubled)
-                    const obstacleHealth = level * 2;
+                    // HEALTH SCALING: Level 1 = 1HP (One shot), Level 2+ = Level * 2
+                    const obstacleHealth = level === 1 ? 1 : level * 2;
 
                     if (spawnAlien) {
                         const availableLanes = [];
@@ -648,16 +809,14 @@ export const LevelManager: React.FC = () => {
                         availableLanes.sort(() => Math.random() - 0.5);
 
                         let alienCount = 1;
-                        const pAlien = Math.random();
-                        if (pAlien > 0.7) alienCount = Math.min(2, availableLanes.length);
-                        // Removed the '3 aliens' probability check to reduce density
+                        // Single aliens mostly now
                         
                         for (let k = 0; k < alienCount; k++) {
                             const lane = availableLanes[k];
                             keptObjects.push({
                                 id: uuidv4(),
                                 type: ObjectType.ALIEN,
-                                position: [lane * LANE_WIDTH, 1.5, spawnZ],
+                                position: [lane * LANE_WIDTH, 1.0, spawnZ], // Lowered from 1.5 to 1.0
                                 active: true,
                                 color: '#00ff00',
                                 hasFired: false,
@@ -674,9 +833,8 @@ export const LevelManager: React.FC = () => {
                         let countToSpawn = 1;
                         const p = Math.random();
 
-                        // Adjusted probabilities for group sizes to reduce density
-                        if (p > 0.90) countToSpawn = Math.min(3, availableLanes.length); // Very rare to get 3
-                        else if (p > 0.70) countToSpawn = Math.min(2, availableLanes.length); // Rare to get 2
+                        // Adjusted probabilities for group sizes to reduce density significantly
+                        if (p > 0.95) countToSpawn = Math.min(2, availableLanes.length); // Extremely rare to get 2
                         // Otherwise 1 (Default)
 
                         for (let i = 0; i < countToSpawn; i++) {
@@ -684,7 +842,7 @@ export const LevelManager: React.FC = () => {
                             
                             // VARIANT LOGIC
                             let variant = EnemyVariant.GREEN_ALIEN;
-                            let height = 0.6;
+                            let height = 0.8; // Raised to 0.8 to prevent clipping (radius 0.5 + bob 0.2)
                             let hp = obstacleHealth;
                             let scale = 1.0;
                             let speedBonus = 0;
@@ -696,14 +854,14 @@ export const LevelManager: React.FC = () => {
                             if (canBeAdvanced && archetypeRoll > 0.8) {
                                 // TANK
                                 variant = EnemyVariant.ARMORED;
-                                height = 1.2;
+                                height = 0.8; // Grounded tank (was 1.2)
                                 scale = 1.8;
                                 hp = level * 6; // Doubled (was level * 3)
                                 speedBonus = -1.5; // Slower approach
                             } else if (canBeAdvanced && archetypeRoll > 0.6) {
                                 // RUSHER
                                 variant = EnemyVariant.SAUCER;
-                                height = 1.0;
+                                height = 0.5; // Grounded saucer (was 1.0)
                                 scale = 0.8;
                                 hp = Math.max(2, Math.floor(level * 1.0)); // Doubled (was level * 0.5)
                                 speedBonus = 5.0; // Fast approach
@@ -732,7 +890,7 @@ export const LevelManager: React.FC = () => {
                                 keptObjects.push({
                                     id: uuidv4(),
                                     type: ObjectType.GEM,
-                                    position: [lane * LANE_WIDTH, height + 1.5 * scale, spawnZ],
+                                    position: [lane * LANE_WIDTH, height + 1.2 * scale, spawnZ], // Lowered relative offset
                                     active: true,
                                     color: '#ffd700',
                                     points: 100
@@ -746,7 +904,7 @@ export const LevelManager: React.FC = () => {
                     keptObjects.push({
                         id: uuidv4(),
                         type: ObjectType.GEM,
-                        position: [lane * LANE_WIDTH, 1.2, spawnZ],
+                        position: [lane * LANE_WIDTH, 0.2, spawnZ], // Dropped to 0.2 (sitting on path)
                         active: true,
                         color: '#00ffff',
                         points: 50
@@ -773,249 +931,3 @@ export const LevelManager: React.FC = () => {
     </group>
   );
 };
-
-const GameEntity: React.FC<{ data: GameObject }> = React.memo(({ data }) => {
-    const groupRef = useRef<THREE.Group>(null);
-    const visualRef = useRef<THREE.Group>(null);
-    const shadowRef = useRef<THREE.Mesh>(null);
-    const { laneCount, speed, isSlowMotion } = useStore();
-    
-    useFrame((state, delta) => {
-        if (groupRef.current) {
-            groupRef.current.position.set(data.position[0], 0, data.position[2]);
-            if (data.position[1]) groupRef.current.position.y = data.position[1];
-        }
-
-        if (visualRef.current) {
-            const baseHeight = 0; // Relative to group
-            // Slow animation speed during slow motion
-            const animSpeed = isSlowMotion ? 0.5 : 1.0; 
-            
-            // Apply scale if present
-            if (data.scale) {
-                visualRef.current.scale.setScalar(data.scale);
-            }
-
-            if (data.type === ObjectType.BARREL) {
-                 // Animation based on variant
-                 if (data.variant === EnemyVariant.SAUCER) {
-                     visualRef.current.rotation.y += delta * 2 * animSpeed; 
-                     visualRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 4) * 0.2;
-                 } else if (data.variant === EnemyVariant.ARMORED) {
-                     // Bobble
-                     visualRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 2) * 0.1;
-                 } else {
-                     // Green Alien
-                     // Bobble
-                     visualRef.current.position.y = baseHeight + Math.abs(Math.sin(state.clock.elapsedTime * 10)) * 0.2; 
-                 }
-            } else if (data.type === ObjectType.SHOP_PORTAL) {
-                 visualRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 2) * 0.02);
-            } else if (data.type === ObjectType.MISSILE) {
-                 visualRef.current.rotation.z += delta * 20 * animSpeed; 
-                 visualRef.current.position.y = baseHeight;
-            } else if (data.type === ObjectType.BULLET) {
-                 visualRef.current.position.y = baseHeight;
-                 visualRef.current.scale.setScalar(1.0 + Math.sin(state.clock.elapsedTime * 30) * 0.2);
-            } else if (data.type === ObjectType.ENEMY_BULLET) {
-                 visualRef.current.position.y = 0; // Already set by group
-                 visualRef.current.scale.setScalar(1.0 + Math.sin(state.clock.elapsedTime * 20) * 0.2);
-            } else if (data.type === ObjectType.ALIEN) {
-                 visualRef.current.position.y = baseHeight + Math.sin(state.clock.elapsedTime * 3) * 0.2;
-                 visualRef.current.rotation.y += delta * animSpeed;
-            } else {
-                visualRef.current.rotation.y += delta * 3 * animSpeed;
-                const bobOffset = Math.sin(state.clock.elapsedTime * 4 + data.position[0]) * 0.1;
-                visualRef.current.position.y = baseHeight + bobOffset;
-                
-                if (shadowRef.current) {
-                    const shadowScale = 1 - bobOffset; 
-                    shadowRef.current.scale.setScalar(shadowScale);
-                }
-            }
-        }
-    });
-
-    const shadowGeo = useMemo(() => {
-        if (data.type === ObjectType.LETTER) return SHADOW_LETTER_GEO;
-        if (data.type === ObjectType.GEM) return SHADOW_GEM_GEO;
-        if (data.type === ObjectType.SHOP_PORTAL) return null; 
-        if (data.type === ObjectType.ALIEN) return SHADOW_ALIEN_GEO;
-        if (data.type === ObjectType.MISSILE) return SHADOW_MISSILE_GEO;
-        if (data.type === ObjectType.BARREL) return SHADOW_BARREL_GEO;
-        if (data.type === ObjectType.BULLET) return null; 
-        if (data.type === ObjectType.ENEMY_BULLET) return null;
-        return SHADOW_DEFAULT_GEO; 
-    }, [data.type]);
-
-    return (
-        <group ref={groupRef} position={[data.position[0], data.position[1], data.position[2]]}>
-            {data.type !== ObjectType.SHOP_PORTAL && data.type !== ObjectType.ENEMY_BULLET && shadowGeo && (
-                <mesh ref={shadowRef} rotation={[-Math.PI / 2, 0, 0]} position={[0, -data.position[1] + 0.03, 0]} geometry={shadowGeo}>
-                    <meshBasicMaterial color="#000000" opacity={0.3} transparent />
-                </mesh>
-            )}
-
-            <group ref={visualRef}>
-                
-                {data.type === ObjectType.BARREL && (
-                    <group>
-                        {data.variant === EnemyVariant.GREEN_ALIEN && (
-                             <group>
-                                 <mesh geometry={ALIEN_GREEN_HEAD} castShadow>
-                                     <meshStandardMaterial color="#00ff00" roughness={0.3} />
-                                 </mesh>
-                                 <mesh position={[0.2, 0.1, 0.4]} geometry={ALIEN_GREEN_EYE}>
-                                     <meshBasicMaterial color="black" />
-                                 </mesh>
-                                 <mesh position={[-0.2, 0.1, 0.4]} geometry={ALIEN_GREEN_EYE}>
-                                     <meshBasicMaterial color="black" />
-                                 </mesh>
-                             </group>
-                        )}
-
-                        {data.variant === EnemyVariant.SAUCER && (
-                            <group>
-                                <mesh geometry={SAUCER_BODY} castShadow>
-                                    <meshStandardMaterial color="#c0c0c0" metalness={0.9} roughness={0.2} />
-                                </mesh>
-                                <mesh position={[0, 0.1, 0]} geometry={SAUCER_DOME}>
-                                    <meshBasicMaterial color="#00ffff" transparent opacity={0.6} />
-                                </mesh>
-                            </group>
-                        )}
-
-                        {data.variant === EnemyVariant.ARMORED && (
-                             <group>
-                                 <mesh geometry={ARMORED_BODY} castShadow>
-                                     <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.3} />
-                                 </mesh>
-                                 <mesh position={[0, 0.55, 0]} geometry={ARMORED_HEAD}>
-                                     <meshStandardMaterial color="#445566" metalness={0.6} roughness={0.4} />
-                                 </mesh>
-                                 {/* Glowing Visor */}
-                                 <mesh position={[0, 0.55, 0.23]} geometry={ARMORED_VISOR}>
-                                     <meshBasicMaterial color="#ff0000" />
-                                 </mesh>
-                                 {/* Shoulders */}
-                                 <mesh position={[0.4, 0.25, 0]} geometry={ARMORED_SHOULDER}>
-                                     <meshStandardMaterial color="#2a2a2a" metalness={0.8} />
-                                 </mesh>
-                                 <mesh position={[-0.4, 0.25, 0]} geometry={ARMORED_SHOULDER}>
-                                     <meshStandardMaterial color="#2a2a2a" metalness={0.8} />
-                                 </mesh>
-                            </group>
-                        )}
-
-                        {/* Fallback for safety */}
-                        {!data.variant && (
-                             <mesh geometry={ALIEN_GREEN_HEAD}><meshStandardMaterial color="red"/></mesh>
-                        )}
-                    </group>
-                )}
-
-                {data.type === ObjectType.BULLET && (
-                    <group rotation={[Math.PI / 2, 0, 0]}>
-                        <mesh geometry={BULLET_GEO}>
-                             <meshBasicMaterial color="#00ffff" />
-                        </mesh>
-                    </group>
-                )}
-
-                {data.type === ObjectType.ENEMY_BULLET && (
-                    <mesh geometry={ENEMY_BULLET_GEO}>
-                         <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={2} />
-                    </mesh>
-                )}
-
-                {data.type === ObjectType.SHOP_PORTAL && (
-                    <group>
-                         <mesh position={[0, 3, 0]} geometry={SHOP_FRAME_GEO} scale={[laneCount * LANE_WIDTH + 2, 1, 1]}>
-                             <meshStandardMaterial color="#111111" metalness={0.8} roughness={0.2} />
-                         </mesh>
-                         <mesh position={[0, 2, 0]} geometry={SHOP_BACK_GEO} scale={[laneCount * LANE_WIDTH, 1, 1]}>
-                              <meshBasicMaterial color="#000000" />
-                         </mesh>
-                         <mesh position={[0, 3, 0]} geometry={SHOP_OUTLINE_GEO} scale={[laneCount * LANE_WIDTH + 2.2, 1, 1]}>
-                             <meshBasicMaterial color="#00ffff" wireframe transparent opacity={0.3} />
-                         </mesh>
-                         <Center position={[0, 5, 0.6]}>
-                             <Text3D font={FONT_URL} size={1.2} height={0.2}>
-                                 CYBER SHOP
-                                 <meshBasicMaterial color="#ffff00" />
-                             </Text3D>
-                         </Center>
-                         <mesh position={[0, 0.1, 0]} rotation={[-Math.PI/2, 0, 0]} geometry={SHOP_FLOOR_GEO} scale={[laneCount * LANE_WIDTH, 1, 1]}>
-                             <meshBasicMaterial color="#00ffff" transparent opacity={0.3} />
-                         </mesh>
-                    </group>
-                )}
-
-                {data.type === ObjectType.ALIEN && (
-                    <group>
-                        <mesh castShadow geometry={ALIEN_BODY_GEO}>
-                            <meshStandardMaterial color="#4400cc" metalness={0.8} roughness={0.2} />
-                        </mesh>
-                        <mesh position={[0, 0.2, 0]} geometry={ALIEN_DOME_GEO}>
-                            <meshStandardMaterial color="#00ff00" emissive="#00ff00" emissiveIntensity={0.5} transparent opacity={0.8} />
-                        </mesh>
-                        <mesh position={[0.3, 0, 0.3]} geometry={ALIEN_EYE_GEO}>
-                             <meshBasicMaterial color="#ff00ff" />
-                        </mesh>
-                        <mesh position={[-0.3, 0, 0.3]} geometry={ALIEN_EYE_GEO}>
-                             <meshBasicMaterial color="#ff00ff" />
-                        </mesh>
-                    </group>
-                )}
-
-                {data.type === ObjectType.MISSILE && (
-                    <group rotation={[Math.PI / 2, 0, 0]}>
-                        <mesh geometry={MISSILE_CORE_GEO}>
-                            <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={4} />
-                        </mesh>
-                        <mesh position={[0, 1.0, 0]} geometry={MISSILE_RING_GEO}>
-                            <meshBasicMaterial color="#ffff00" />
-                        </mesh>
-                        <mesh position={[0, 0, 0]} geometry={MISSILE_RING_GEO}>
-                            <meshBasicMaterial color="#ffff00" />
-                        </mesh>
-                        <mesh position={[0, -1.0, 0]} geometry={MISSILE_RING_GEO}>
-                            <meshBasicMaterial color="#ffff00" />
-                        </mesh>
-                    </group>
-                )}
-
-                {data.type === ObjectType.GEM && (
-                    <mesh castShadow geometry={GEM_GEOMETRY}>
-                        <meshStandardMaterial 
-                            color={data.color} 
-                            roughness={0} 
-                            metalness={1} 
-                            emissive={data.color} 
-                            emissiveIntensity={2} 
-                        />
-                    </mesh>
-                )}
-
-                {data.type === ObjectType.LETTER && (
-                    <group scale={[1.5, 1.5, 1.5]}>
-                         <Center>
-                             <Text3D 
-                                font={FONT_URL} 
-                                size={0.8} 
-                                height={0.5} 
-                                bevelEnabled
-                                bevelThickness={0.02}
-                                bevelSize={0.02}
-                                bevelSegments={5}
-                             >
-                                {data.value}
-                                <meshStandardMaterial color={data.color} emissive={data.color} emissiveIntensity={1.5} />
-                             </Text3D>
-                         </Center>
-                    </group>
-                )}
-            </group>
-        </group>
-    );
-});

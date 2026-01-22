@@ -1,27 +1,58 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, Suspense, ReactNode } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useGLTF, useAnimations } from '@react-three/drei'; // Imported for future GLB loading
+import { useGLTF, useAnimations } from '@react-three/drei';
 import { useStore } from '../../store';
 import { LANE_WIDTH, GameStatus } from '../../types';
 import { audio } from '../System/Audio';
 
 const FIRE_RATE = 0.15; // Seconds between shots
 
-// --- ASSET CONFIGURATION ---
-// Set this to true if you have placed a 'player.glb' in 'public/assets/models/'
-const USE_LOCAL_MODEL = false; 
-const LOCAL_MODEL_PATH = '/assets/models/player.glb';
+// --- CONFIGURATION ---
+// Set to true to attempt loading the external GLB model.
+// Ensure the file exists at the path or URL before enabling to avoid 404 errors.
+const ENABLE_CUSTOM_MODEL = true; 
 
-// --- Procedural Mech Character ---
-// This acts as a fallback or default when no external asset is provided.
+// --- PATH CONSTANTS ---
+const REMOTE_PATH = 'https://raw.githubusercontent.com/Lexus74/Gemini-Hunter/main/public/assets/models/Hunter.glb';
+const LOCAL_PATH = '/assets/models/Hunter.glb';
+
+// --- ERROR BOUNDARY ---
+// Catches 404s/Fetch errors from useGLTF
+interface ErrorBoundaryProps {
+  fallback: ReactNode;
+  children?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ModelErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError(error: any): ErrorBoundaryState {
+    return { hasError: true };
+  }
+  
+  componentDidCatch(error: any) {
+    // Suppress console error spam for known missing assets if handled
+    // console.warn("Model failed to load, switching to fallback.", error);
+  }
+  
+  render() {
+    if (this.state.hasError) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
+// --- Procedural Mech Character (Fallback) ---
 const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
     const group = useRef<THREE.Group>(null);
     const leftLeg = useRef<THREE.Group>(null);
@@ -36,57 +67,58 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
         const baseSpeed = 15;
         const speed = isSlowMotion ? baseSpeed * 0.5 : baseSpeed; 
         
-        // Run Cycle Animation
+        // Leg Animation (Walking)
         const legAmp = 0.6;
         leftLeg.current.rotation.x = Math.sin(t * speed) * legAmp;
         rightLeg.current.rotation.x = Math.sin(t * speed + Math.PI) * legAmp;
         
-        // Arm Cycle (Opposite to legs)
-        const armAmp = 0.5;
+        // Arm Animation
+        const armAmp = 0.3;
+        
+        // Left Arm: Natural Swing
         leftArm.current.rotation.x = Math.sin(t * speed + Math.PI) * armAmp;
-        // Right arm is stiffer because it's holding a gun, but still moves
-        rightArm.current.rotation.x = (Math.sin(t * speed) * armAmp * 0.5) - 0.2; 
+        
+        // Right Arm: HOLD GUN (Pointing Forward)
+        // Fixed -90 degrees (pointing forward) + slight recoil/bob
+        rightArm.current.rotation.x = -Math.PI / 2 + (Math.sin(t * speed * 2) * 0.05);
     });
 
     return (
         <group ref={group}>
-            {/* --- Torso --- */}
+            {/* Torso */}
             <mesh position={[0, 1.1, 0]} castShadow receiveShadow>
                 <boxGeometry args={[0.5, 0.6, 0.3]} />
                 <meshStandardMaterial color="#1a1a1a" roughness={0.3} metalness={0.8} />
             </mesh>
-            {/* Chest Core (Neon) */}
+            {/* Chest Light */}
             <mesh position={[0, 1.2, 0.16]}>
                 <circleGeometry args={[0.12, 32]} />
                 <meshBasicMaterial color="#00ffff" toneMapped={false} />
             </mesh>
             <pointLight position={[0, 1.2, 0.3]} distance={1} intensity={2} color="#00ffff" />
-
-            {/* --- Head --- */}
+            
+            {/* Head */}
             <group position={[0, 1.55, 0]}>
                 <mesh castShadow receiveShadow>
                     <boxGeometry args={[0.3, 0.3, 0.35]} />
                     <meshStandardMaterial color="#333" roughness={0.3} metalness={0.8} />
                 </mesh>
-                {/* Visor */}
                 <mesh position={[0, 0.02, 0.18]}>
                     <planeGeometry args={[0.25, 0.1]} />
                     <meshBasicMaterial color="#ff0055" toneMapped={false} />
                 </mesh>
-                {/* Antenna */}
                 <mesh position={[0.1, 0.2, -0.1]}>
                     <cylinderGeometry args={[0.01, 0.01, 0.3]} />
                     <meshStandardMaterial color="#888" />
                 </mesh>
             </group>
 
-            {/* --- Jetpack / Back --- */}
+            {/* Jetpack */}
             <group position={[0, 1.2, -0.2]}>
                 <mesh castShadow>
                      <boxGeometry args={[0.4, 0.5, 0.15]} />
                      <meshStandardMaterial color="#222" />
                 </mesh>
-                {/* Thruster Glows */}
                 <mesh position={[-0.1, -0.25, 0]} rotation={[Math.PI, 0, 0]}>
                     <coneGeometry args={[0.08, 0.3, 8]} />
                     <meshBasicMaterial color="#00ffff" transparent opacity={0.6} />
@@ -97,7 +129,7 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
                 </mesh>
             </group>
 
-            {/* --- Arms --- */}
+            {/* Left Arm */}
             <group ref={leftArm} position={[-0.35, 1.35, 0]}>
                 <mesh position={[0, -0.3, 0]} castShadow>
                     <boxGeometry args={[0.15, 0.6, 0.15]} />
@@ -109,18 +141,21 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
                 </mesh>
             </group>
 
+            {/* Right Arm (With Gun) */}
             <group ref={rightArm} position={[0.35, 1.35, 0]}>
+                {/* Arm Segment */}
                 <mesh position={[0, -0.3, 0]} castShadow>
                     <boxGeometry args={[0.15, 0.6, 0.15]} />
                     <meshStandardMaterial color="#444" />
                 </mesh>
-                {/* Arm Cannon */}
+                
+                {/* Gun Assembly attached to hand */}
                 <group position={[0, -0.6, 0.2]} rotation={[Math.PI/2, 0, 0]}>
                      <mesh castShadow>
                          <cylinderGeometry args={[0.06, 0.08, 0.5]} />
                          <meshStandardMaterial color="#111" />
                      </mesh>
-                     {/* Muzzle Glow */}
+                     {/* Barrel Glow */}
                      <mesh position={[0, 0.26, 0]}>
                          <cylinderGeometry args={[0.04, 0.04, 0.05]} />
                          <meshBasicMaterial color="#00ffff" />
@@ -128,25 +163,22 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
                 </group>
             </group>
 
-            {/* --- Legs --- */}
+            {/* Legs */}
             <group ref={leftLeg} position={[-0.2, 0.8, 0]}>
                 <mesh position={[0, -0.4, 0]} castShadow>
                     <boxGeometry args={[0.18, 0.8, 0.2]} />
                     <meshStandardMaterial color="#222" />
                 </mesh>
-                {/* Knee Pad */}
                 <mesh position={[0, -0.2, 0.11]}>
                     <boxGeometry args={[0.12, 0.15, 0.05]} />
                     <meshStandardMaterial color="#444" />
                 </mesh>
             </group>
-
             <group ref={rightLeg} position={[0.2, 0.8, 0]}>
                 <mesh position={[0, -0.4, 0]} castShadow>
                     <boxGeometry args={[0.18, 0.8, 0.2]} />
                     <meshStandardMaterial color="#222" />
                 </mesh>
-                 {/* Knee Pad */}
                  <mesh position={[0, -0.2, 0.11]}>
                     <boxGeometry args={[0.12, 0.15, 0.05]} />
                     <meshStandardMaterial color="#444" />
@@ -156,30 +188,52 @@ const MechModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
     );
 };
 
-// --- GLB Asset Loader (Optional) ---
-const LoadedModel: React.FC<{ isSlowMotion: boolean }> = ({ isSlowMotion }) => {
-    // This will error if the file doesn't exist, which is why USE_LOCAL_MODEL is false by default
-    // When you have a file, upload it to public/assets/models/player.glb
-    const { scene, animations } = useGLTF(LOCAL_MODEL_PATH) as any;
+// --- Generic GLB Asset Loader ---
+const LoadedModel: React.FC<{ url: string, isSlowMotion: boolean }> = ({ url, isSlowMotion }) => {
+    const { scene, animations } = useGLTF(url) as any;
     const { actions } = useAnimations(animations, scene);
 
     useEffect(() => {
+        if (scene) {
+            scene.traverse((child: any) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+        }
+    }, [scene]);
+
+    // Animation Selection Logic
+    useEffect(() => {
         if (actions) {
-            const actionName = Object.keys(actions)[0];
-            const action = actions[actionName];
-            if(action) action.reset().fadeIn(0.5).play();
+            const actionKeys = Object.keys(actions);
+            if (actionKeys.length > 0) {
+                // Try to find a 'Run' or 'Walk' animation, otherwise default to first
+                const runKey = actionKeys.find(key => key.toLowerCase().includes('run') || key.toLowerCase().includes('walk') || key.toLowerCase().includes('sprint'));
+                const keyToPlay = runKey || actionKeys[0];
+                
+                const action = actions[keyToPlay];
+                if(action) {
+                    action.reset().fadeIn(0.5).play();
+                }
+            }
         }
     }, [actions]);
 
     useEffect(() => {
         if (actions) {
             Object.values(actions).forEach((action: any) => {
-                if (action) action.timeScale = isSlowMotion ? 0.5 : 1.2;
+                if (action) {
+                     // Reduced speed to simulate walking
+                     action.timeScale = isSlowMotion ? 0.25 : 0.6; // Slightly faster walk
+                }
             });
         }
     }, [isSlowMotion, actions]);
 
-    return <primitive object={scene} scale={[1, 1, 1]} />;
+    // Facing Forward (Math.PI / 2) - Corrected rotation based on user feedback
+    return <primitive object={scene} scale={[2.0, 2.0, 2.0]} position={[0, 0, 0]} rotation={[0, Math.PI / 2, 0]} />;
 };
 
 
@@ -419,20 +473,33 @@ export const Player: React.FC = () => {
      return () => window.removeEventListener('player-hit', checkHit);
   }, [takeDamage, isImmortalityActive]);
 
+  // --- Fallback Rendering Logic ---
+  // Try Remote -> Try Local -> Use Procedural
   return (
     <group ref={groupRef} position={[0, 0, 0]}>
       <group ref={bodyRef}>
-          {/* Use Local Model if flag is set, otherwise use Procedural Mech */}
-          {USE_LOCAL_MODEL ? (
-               <React.Suspense fallback={<MechModel isSlowMotion={isSlowMotion} />}>
-                   <LoadedModel isSlowMotion={isSlowMotion} />
-               </React.Suspense>
+          {ENABLE_CUSTOM_MODEL ? (
+              <ModelErrorBoundary fallback={
+                   // Level 2: Try Local File
+                   <ModelErrorBoundary fallback={
+                        // Level 3: Fallback to Procedural Code
+                        <MechModel isSlowMotion={isSlowMotion} />
+                   }>
+                        <Suspense fallback={<MechModel isSlowMotion={isSlowMotion} />}>
+                            <LoadedModel url={LOCAL_PATH} isSlowMotion={isSlowMotion} />
+                        </Suspense>
+                   </ModelErrorBoundary>
+              }>
+                   {/* Level 1: Try Remote URL */}
+                   <Suspense fallback={<MechModel isSlowMotion={isSlowMotion} />}>
+                       <LoadedModel url={REMOTE_PATH} isSlowMotion={isSlowMotion} />
+                   </Suspense>
+              </ModelErrorBoundary>
           ) : (
-               <MechModel isSlowMotion={isSlowMotion} />
+              <MechModel isSlowMotion={isSlowMotion} />
           )}
       </group>
       
-      {/* Simple Blob Shadow as fallback/landing indicator */}
       <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI/2, 0, 0]}>
         <circleGeometry args={[0.5, 32]} />
         <meshBasicMaterial color="#000000" opacity={0.5} transparent />

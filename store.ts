@@ -59,7 +59,7 @@ export const useStore = create<GameState>((set, get) => ({
   speed: 0,
   collectedLetters: [],
   level: 1,
-  laneCount: 3,
+  laneCount: 2, // Default to 2 lanes
   gemsCollected: 0,
   distance: 0,
   gameTime: 0,
@@ -79,7 +79,7 @@ export const useStore = create<GameState>((set, get) => ({
     speed: RUN_SPEED_BASE,
     collectedLetters: [],
     level: 1,
-    laneCount: 3,
+    laneCount: 2, // Start with 2 lanes
     gemsCollected: 0,
     distance: 0,
     gameTime: 0,
@@ -98,7 +98,7 @@ export const useStore = create<GameState>((set, get) => ({
     speed: RUN_SPEED_BASE,
     collectedLetters: [],
     level: 1,
-    laneCount: 3,
+    laneCount: 2, // Restart with 2 lanes
     gemsCollected: 0,
     distance: 0,
     gameTime: 0,
